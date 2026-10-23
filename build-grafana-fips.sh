@@ -17,7 +17,7 @@ GRAFANA_PLUGINS="${GRAFANA_PLUGINS:-}"
 
 # Directory containing this script — used to locate patch files
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCHES_DIR="${SCRIPT_DIR}/../patches/grafana-${VERSION}"
+PATCHES_DIR="${SCRIPT_DIR}/patches/grafana-${VERSION}"
 
 # --- prerequisites -----------------------------------------------------------
 
