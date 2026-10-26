@@ -4,7 +4,7 @@ GRAFANA FIPS PORT — BUILD REPORT
 SUMMARY
 -------
 Grafana is an open-source monitoring and observability platform. This report covers the
-porting of Grafana 13.2.3 to run on a FIPS-enabled GardenLinux (Debian-based) container
+porting of Grafana 13.2.4 to run on a FIPS-enabled GardenLinux (Debian-based) container
 image with GODEBUG=fips140=only enforcement.
 
 INITIAL TRIAGE
@@ -19,28 +19,28 @@ INITIAL TRIAGE
 
 APPLICATION METADATA
 --------------------
-- Version:            13.2.3
-- Upstream git SHA:   6193dc03311b631b9727b560d24369e683dc396e
+- Version:            13.2.4
+- Upstream git SHA:   af4a33e3786594ad72f72d97e6744010330c2977
 - FIPS crypto:        Go standard library via GODEBUG=fips140=only, backed by
                       GardenLinux FIPS-enabled OpenSSL (ghcr.io/gardenlinux/gardenlinux/fips:1877.22)
 
 PRODUCED DOCKER IMAGE
 ---------------------
-- Image:  gl-fips-grafana:13.2.3-amd64
+- Image:  gl-fips-grafana:13.2.4-amd64
 - Size:   2.1 GB (includes all 18 pre-installed bundled plugins)
 
 
 STEPS TAKEN
 -----------
 
-1. Cloned grafana/grafana at tag v13.2.3 to .build/fips-port-grafana.
+1. Cloned grafana/grafana at tag v13.2.4 to .build/fips-port-grafana.
 
 2. Identified non-FIPS-approved crypto primitives by grepping the source:
    - MD5 used for cache keys and config hashes → replaced with SHA-256
    - SHA-1 used in legacy API paths → replaced with SHA-256
    - AES-CFB cipher used for data encryption → replaced with AES-GCM
    - bcrypt used for password hashing → kept (FIPS exemption for authentication)
-   All source changes are captured in patches/grafana-13.2.3/0001-fips-replace-non-approved-crypto.patch
+   All source changes are captured in patches/grafana-13.2.4/0001-fips-replace-non-approved-crypto.patch
    and applied idempotently via `git apply` on each build script run.
 
 3. Generated Dockerfile.fips by:
@@ -127,7 +127,7 @@ test-image.sh (FIPS baseline checks):
   *** GODEBUG=fips140=only set:      PASS
   *** OCI description label:         PASS (A FIPS-enabled Grafana image)
   *** OCI licenses label:            PASS (AGPL-3.0-only)
-  *** OCI revision label:            PASS (6193dc03311b631b9727b560d24369e683dc396e)
+  *** OCI revision label:            PASS (af4a33e3786594ad72f72d97e6744010330c2977)
 EXIT: 0
 
 k3d cluster test (cluster: fips-test):
@@ -138,4 +138,4 @@ k3d cluster test (cluster: fips-test):
 
   | Image                        | Pod Status | Pass/Fail |
   |------------------------------|------------|-----------|
-  | gl-fips-grafana:13.2.3-amd64 | Running    | PASS      |
+  | gl-fips-grafana:13.2.4-amd64 | Running    | PASS      |

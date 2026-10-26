@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Upstream version to build (e.g. 13.2.3)'
+        description: 'Upstream version to build (e.g. 13.2.4)'
         required: false
-        default: '13.2.3'
+        default: '13.2.4'
 
 permissions:
   packages: write

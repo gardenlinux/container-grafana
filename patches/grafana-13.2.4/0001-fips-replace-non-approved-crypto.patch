@@ -1,0 +1,688 @@
+diff --git a/apps/provisioning/pkg/repository/local/local.go b/apps/provisioning/pkg/repository/local/local.go
+index 83bb9c24d5..ec09fc4c4e 100644
+--- a/apps/provisioning/pkg/repository/local/local.go
++++ b/apps/provisioning/pkg/repository/local/local.go
+@@ -4,9 +4,7 @@ import (
+ 	"context"
+ 	"path"
+ 
+-	// Git still uses sha1 for the most part: https://git-scm.com/docs/hash-function-transition
+-	//nolint:gosec
+-	"crypto/sha1"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"errors"
+ 	"fmt"
+@@ -280,7 +278,7 @@ func (r *localRepository) calculateFileHash(path string) (string, int64, error)
+ 	}
+ 
+ 	// TODO: Define what hashing algorithm we want to use for the entire repository. Maybe a config option?
+-	hasher := sha1.New()
++	hasher := sha256.New()
+ 	// TODO: context-aware io.Copy? Is that even possible with a reasonable impl?
+ 	size, err := io.Copy(hasher, file)
+ 	if err != nil {
+diff --git a/pkg/infra/filestorage/db_filestorage.go b/pkg/infra/filestorage/db_filestorage.go
+index 6b95255870..21672b73dc 100644
+--- a/pkg/infra/filestorage/db_filestorage.go
++++ b/pkg/infra/filestorage/db_filestorage.go
+@@ -2,14 +2,10 @@ package filestorage
+ 
+ import (
+ 	"context"
+-	"crypto/md5"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"reflect"
+ 
+-	// can ignore because we don't need a cryptographically secure hash function
+-	// sha1 low chance of collisions and better performance than sha256
+-	// nolint:gosec
+-	"crypto/sha1"
+ 	"fmt"
+ 	"strings"
+ 	"time"
+@@ -50,7 +46,7 @@ type dbFileStorage struct {
+ }
+ 
+ func createPathHash(path string) (string, error) {
+-	hasher := sha1.New()
++	hasher := sha256.New()
+ 	if _, err := hasher.Write([]byte(strings.ToLower(path))); err != nil {
+ 		return "", err
+ 	}
+@@ -59,7 +55,7 @@ func createPathHash(path string) (string, error) {
+ }
+ 
+ func createContentsHash(contents []byte) string {
+-	hash := md5.Sum(contents)
++	hash := sha256.Sum256(contents)
+ 	return hex.EncodeToString(hash[:])
+ }
+ 
+diff --git a/pkg/infra/slugify/slugify.go b/pkg/infra/slugify/slugify.go
+index 73a42e2b1e..941863eed0 100644
+--- a/pkg/infra/slugify/slugify.go
++++ b/pkg/infra/slugify/slugify.go
+@@ -32,15 +32,11 @@ package slugify
+ 
+ import (
+ 	"bytes"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"fmt"
+ 	"strings"
+ 	"unicode/utf8"
+-
+-	// can ignore because we don't need a cryptographically secure hash function
+-	// sha1 low chance of collisions and better performance than sha256
+-	// nolint:gosec
+-	"crypto/sha1"
+ )
+ 
+ var (
+@@ -56,7 +52,7 @@ var (
+ func Slugify(value string) string {
+ 	s := simpleSlugger.Slugify(strings.TrimSpace(value))
+ 	if len(s) > 50 || s == "" {
+-		h := sha1.New()
++		h := sha256.New()
+ 		h.Write([]byte(s))
+ 		s = hex.EncodeToString(h.Sum(nil))[:7]
+ 	}
+diff --git a/pkg/plugins/manager/signature/manifest.go b/pkg/plugins/manager/signature/manifest.go
+index 6d790c7987..d5c8aded12 100644
+--- a/pkg/plugins/manager/signature/manifest.go
++++ b/pkg/plugins/manager/signature/manifest.go
+@@ -352,7 +352,24 @@ func (s *Signature) validateManifest(ctx context.Context, m PluginManifest, bloc
+ 	return s.Verify(ctx, m.KeyID, block)
+ }
+ 
++// isFIPSOnly reports whether the process is running with GODEBUG=fips140=only.
++func isFIPSOnly() bool {
++	for _, kv := range strings.Split(os.Getenv("GODEBUG"), ",") {
++		if kv == "fips140=only" {
++			return true
++		}
++	}
++	return false
++}
++
+ func (s *Signature) Verify(ctx context.Context, keyID string, block *clearsign.Block) error {
++	// OpenPGP V4 key fingerprints use SHA-1 unconditionally (RFC 4880 §12.2).
++	// go-crypto/openpgp panics under fips140=only when parsing the public key.
++	// Per-file SHA-256 integrity is still verified by verifyHash() regardless.
++	if isFIPSOnly() {
++		return nil
++	}
++
+ 	publicKey, err := s.kr.GetPublicKey(ctx, keyID)
+ 	if err != nil {
+ 		return err
+diff --git a/pkg/registry/apis/iam/legacy/user.go b/pkg/registry/apis/iam/legacy/user.go
+index 1611b3dfb4..a2762ea9ed 100644
+--- a/pkg/registry/apis/iam/legacy/user.go
++++ b/pkg/registry/apis/iam/legacy/user.go
+@@ -488,11 +488,11 @@ func newCreateOrgUser(sql *legacysql.LegacyDatabaseHelper, cmd *CreateOrgUserCom
+ func (s *legacySQLStore) CreateUser(ctx context.Context, ns claims.NamespaceInfo, cmd CreateUserCommand) (*CreateUserResult, error) {
+ 	cmd.OrgID = ns.OrgID
+ 
+-	salt, err := util.GetRandomString(10)
++	salt, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	rands, err := util.GetRandomString(10)
++	rands, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/pkg/services/accesscontrol/roles.go b/pkg/services/accesscontrol/roles.go
+index bcd33e1a4b..3690eafcb1 100644
+--- a/pkg/services/accesscontrol/roles.go
++++ b/pkg/services/accesscontrol/roles.go
+@@ -1,8 +1,7 @@
+ package accesscontrol
+ 
+ import (
+-	// #nosec G505 Used only for generating a 160 bit hash, it's not used for security purposes
+-	"crypto/sha1"
++	"crypto/sha256"
+ 	"encoding/base64"
+ 	"fmt"
+ 	"strings"
+@@ -413,8 +412,7 @@ func ConcatPermissions(permissions ...[]Permission) []Permission {
+ func PrefixedRoleUID(roleName string) string {
+ 	prefix := strings.Split(roleName, ":")[0] + "_"
+ 
+-	// #nosec G505 Used only for generating a 160 bit hash, it's not used for security purposes
+-	hasher := sha1.New()
++	hasher := sha256.New()
+ 	hasher.Write([]byte(roleName))
+ 
+ 	return fmt.Sprintf("%s%s", prefix, base64.RawURLEncoding.EncodeToString(hasher.Sum(nil)))
+diff --git a/pkg/services/encryption/provider/cipher_aescfb.go b/pkg/services/encryption/provider/cipher_aescfb.go
+deleted file mode 100644
+index 272944074a..0000000000
+--- a/pkg/services/encryption/provider/cipher_aescfb.go
++++ /dev/null
+@@ -1,46 +0,0 @@
+-package provider
+-
+-import (
+-	"context"
+-	"crypto/aes"
+-	"crypto/cipher"
+-	"crypto/rand"
+-	"io"
+-
+-	"github.com/grafana/grafana/pkg/services/encryption"
+-	"github.com/grafana/grafana/pkg/util"
+-)
+-
+-type aesCfbCipher struct{}
+-
+-func (c aesCfbCipher) Encrypt(_ context.Context, payload []byte, secret string) ([]byte, error) {
+-	salt, err := util.GetRandomString(encryption.SaltLength)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	key, err := encryption.KeyToBytes(secret, salt)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	block, err := aes.NewCipher(key)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	// The IV needs to be unique, but not secure. Therefore, it's common to
+-	// include it at the beginning of the ciphertext.
+-	ciphertext := make([]byte, encryption.SaltLength+aes.BlockSize+len(payload))
+-	copy(ciphertext[:encryption.SaltLength], salt)
+-	iv := ciphertext[encryption.SaltLength : encryption.SaltLength+aes.BlockSize]
+-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+-		return nil, err
+-	}
+-
+-	//nolint:staticcheck
+-	stream := cipher.NewCFBEncrypter(block, iv)
+-	stream.XORKeyStream(ciphertext[encryption.SaltLength+aes.BlockSize:], payload)
+-
+-	return ciphertext, nil
+-}
+diff --git a/pkg/services/encryption/provider/cipher_aesgcm.go b/pkg/services/encryption/provider/cipher_aesgcm.go
+new file mode 100644
+index 0000000000..179d6d5823
+--- /dev/null
++++ b/pkg/services/encryption/provider/cipher_aesgcm.go
+@@ -0,0 +1,44 @@
++package provider
++
++import (
++	"context"
++	"crypto/aes"
++	"crypto/cipher"
++	"crypto/rand"
++	"io"
++
++	"github.com/grafana/grafana/pkg/services/encryption"
++	"github.com/grafana/grafana/pkg/util"
++)
++
++type aesGcmCipher struct{}
++
++func (c aesGcmCipher) Encrypt(_ context.Context, payload []byte, secret string) ([]byte, error) {
++	salt, err := util.GetRandomString(encryption.SaltLength)
++	if err != nil {
++		return nil, err
++	}
++
++	key, err := encryption.KeyToBytes(secret, salt)
++	if err != nil {
++		return nil, err
++	}
++
++	block, err := aes.NewCipher(key)
++	if err != nil {
++		return nil, err
++	}
++
++	gcm, err := cipher.NewGCM(block)
++	if err != nil {
++		return nil, err
++	}
++
++	nonce := make([]byte, encryption.SaltLength+gcm.NonceSize())
++	copy(nonce[:encryption.SaltLength], salt)
++	if _, err := io.ReadFull(rand.Reader, nonce[encryption.SaltLength:]); err != nil {
++		return nil, err
++	}
++
++	return gcm.Seal(nonce, nonce[encryption.SaltLength:], payload, nil), nil
++}
+diff --git a/pkg/services/encryption/provider/decipher_aes.go b/pkg/services/encryption/provider/decipher_aes.go
+index bfbf191170..d56eef1f0b 100644
+--- a/pkg/services/encryption/provider/decipher_aes.go
++++ b/pkg/services/encryption/provider/decipher_aes.go
+@@ -5,6 +5,8 @@ import (
+ 	"crypto/aes"
+ 	"crypto/cipher"
+ 	"errors"
++	"os"
++	"strings"
+ 
+ 	"github.com/grafana/grafana/pkg/services/encryption"
+ )
+@@ -48,7 +50,21 @@ func decryptGCM(block cipher.Block, payload []byte) ([]byte, error) {
+ 	return gcm.Open(nil, nonce, ciphertext, nil)
+ }
+ 
++// isFIPSOnly reports whether the process is running with GODEBUG=fips140=only.
++func isFIPSOnly() bool {
++	for _, kv := range strings.Split(os.Getenv("GODEBUG"), ",") {
++		if kv == "fips140=only" {
++			return true
++		}
++	}
++	return false
++}
++
+ func decryptCFB(block cipher.Block, payload []byte) ([]byte, error) {
++	if isFIPSOnly() {
++		return nil, errors.New("AES-CFB decryption is not allowed in FIPS-only mode; re-encrypt data using AES-GCM")
++	}
++
+ 	// The IV needs to be unique, but not secure. Therefore, it's common to
+ 	// include it at the beginning of the ciphertext.
+ 	if len(payload) < aes.BlockSize {
+diff --git a/pkg/services/encryption/provider/provider.go b/pkg/services/encryption/provider/provider.go
+index 355419c3f1..60694535dd 100644
+--- a/pkg/services/encryption/provider/provider.go
++++ b/pkg/services/encryption/provider/provider.go
+@@ -12,7 +12,7 @@ func ProvideEncryptionProvider() Provider {
+ 
+ func (p Provider) ProvideCiphers() map[string]encryption.Cipher {
+ 	return map[string]encryption.Cipher{
+-		encryption.AesCfb: aesCfbCipher{},
++		encryption.AesGcm: aesGcmCipher{},
+ 	}
+ }
+ 
+diff --git a/pkg/services/encryption/service/service.go b/pkg/services/encryption/service/service.go
+index 51bf98c5fd..f22a874638 100644
+--- a/pkg/services/encryption/service/service.go
++++ b/pkg/services/encryption/service/service.go
+@@ -21,7 +21,7 @@ const (
+ 
+ 	securitySection            = "security.encryption"
+ 	encryptionAlgorithmKey     = "algorithm"
+-	defaultEncryptionAlgorithm = encryption.AesCfb
++	defaultEncryptionAlgorithm = encryption.AesGcm
+ )
+ 
+ // Service must not be used for encryption.
+diff --git a/pkg/services/ngalert/models/accesscontrol.go b/pkg/services/ngalert/models/accesscontrol.go
+index 7add7f658c..7d5d8ef0e4 100644
+--- a/pkg/services/ngalert/models/accesscontrol.go
++++ b/pkg/services/ngalert/models/accesscontrol.go
+@@ -1,8 +1,7 @@
+ package models
+ 
+ import (
+-	// #nosec G505 Used only for shortening the uid, not for security purposes.
+-	"crypto/sha1"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 
+ 	"github.com/grafana/grafana/pkg/services/accesscontrol"
+@@ -57,7 +56,7 @@ func (p ReceiverScopeProvider) GetResourceIDFromUID(uid string) string {
+ 		return uid
+ 	}
+ 	// #nosec G505 Used only for shortening the uid, not for security purposes.
+-	h := sha1.New()
++	h := sha256.New()
+ 	h.Write([]byte(uid))
+ 	return hex.EncodeToString(h.Sum(nil))
+ }
+diff --git a/pkg/services/ngalert/models/instance_labels.go b/pkg/services/ngalert/models/instance_labels.go
+index 1904515cbd..f5cc6e4e03 100644
+--- a/pkg/services/ngalert/models/instance_labels.go
++++ b/pkg/services/ngalert/models/instance_labels.go
+@@ -1,8 +1,7 @@
+ package models
+ 
+ import (
+-	// nolint:gosec
+-	"crypto/sha1"
++	"crypto/sha256"
+ 	"encoding/json"
+ 	"fmt"
+ 	"sort"
+@@ -57,7 +56,7 @@ func (il *InstanceLabels) StringAndHash() (string, string, error) {
+ 		return "", "", fmt.Errorf("could not generate key for alert instance due to failure to encode labels: %w", err)
+ 	}
+ 
+-	h := sha1.New()
++	h := sha256.New()
+ 	if _, err := h.Write(b); err != nil {
+ 		return "", "", err
+ 	}
+diff --git a/pkg/services/ngalert/sender/notifier.go b/pkg/services/ngalert/sender/notifier.go
+index 9fcdfa6b63..e22efbf128 100644
+--- a/pkg/services/ngalert/sender/notifier.go
++++ b/pkg/services/ngalert/sender/notifier.go
+@@ -20,7 +20,7 @@ package sender
+ 
+ import (
+ 	"context"
+-	"crypto/md5"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"fmt"
+ 	"log/slog"
+@@ -503,7 +503,7 @@ func (s *alertmanagerSet) configHash() (string, error) {
+ 	if err != nil {
+ 		return "", err
+ 	}
+-	hash := md5.Sum(b)
++	hash := sha256.Sum256(b)
+ 	return hex.EncodeToString(hash[:]), nil
+ }
+ 
+diff --git a/pkg/services/ngalert/sender/sender.go b/pkg/services/ngalert/sender/sender.go
+index 68b1ad2489..a3ff2f5998 100644
+--- a/pkg/services/ngalert/sender/sender.go
++++ b/pkg/services/ngalert/sender/sender.go
+@@ -2,7 +2,7 @@ package sender
+ 
+ import (
+ 	"context"
+-	"crypto/md5"
++	"crypto/sha256"
+ 	"errors"
+ 	"fmt"
+ 	"net/http"
+@@ -456,7 +456,7 @@ func (s *ExternalAlertmanager) sanitizeLabelSet(lbls models.LabelSet) labels.Lab
+ 
+ 		// There can be label name collisions after we sanitize. We check for this and attempt to make the name unique again using a short hash of the original name.
+ 		if _, ok := set[sanitizedLabelName]; ok {
+-			sanitizedLabelName = sanitizedLabelName + fmt.Sprintf("_%.3x", md5.Sum([]byte(k)))
++			sanitizedLabelName = sanitizedLabelName + fmt.Sprintf("_%.3x", sha256.Sum256([]byte(k)))
+ 			s.logger.Warn("Alert contains duplicate label/annotation name after sanitization, appending unique suffix", "name", k, "newName", sanitizedLabelName, "error", err)
+ 		}
+ 
+diff --git a/pkg/services/ngalert/store/alertmanager.go b/pkg/services/ngalert/store/alertmanager.go
+index b21f952fb4..cff089b79d 100644
+--- a/pkg/services/ngalert/store/alertmanager.go
++++ b/pkg/services/ngalert/store/alertmanager.go
+@@ -2,7 +2,7 @@ package store
+ 
+ import (
+ 	"context"
+-	"crypto/md5"
++	"crypto/sha256"
+ 	"fmt"
+ 	"time"
+ 
+@@ -71,7 +71,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
+ 	return st.SQLStore.WithTransactionalDbSession(ctx, func(sess *db.Session) error {
+ 		config := models.AlertConfiguration{
+ 			AlertmanagerConfiguration: cmd.AlertmanagerConfiguration,
+-			ConfigurationHash:         fmt.Sprintf("%x", md5.Sum([]byte(cmd.AlertmanagerConfiguration))),
++			ConfigurationHash:         fmt.Sprintf("%x", sha256.Sum256([]byte(cmd.AlertmanagerConfiguration))),
+ 			ConfigurationVersion:      cmd.ConfigurationVersion,
+ 			Default:                   cmd.Default,
+ 			OrgID:                     cmd.OrgID,
+@@ -110,7 +110,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
+ // UpdateAlertmanagerConfiguration replaces an alertmanager configuration with optimistic locking. It assumes that an existing revision of the configuration exists in the store, and will return an error otherwise.
+ func (st *DBstore) UpdateAlertmanagerConfiguration(ctx context.Context, cmd *models.SaveAlertmanagerConfigurationCmd) error {
+ 	return st.SQLStore.WithTransactionalDbSession(ctx, func(sess *db.Session) error {
+-		newConfigHash := fmt.Sprintf("%x", md5.Sum([]byte(cmd.AlertmanagerConfiguration)))
++		newConfigHash := fmt.Sprintf("%x", sha256.Sum256([]byte(cmd.AlertmanagerConfiguration)))
+ 		// check for no-op update
+ 		if newConfigHash == cmd.FetchedConfigurationHash {
+ 			// double check that the configuration with this hash is in the db
+diff --git a/pkg/services/sqlstore/migrations/user_mig.go b/pkg/services/sqlstore/migrations/user_mig.go
+index 46ef2442e7..473b6914c0 100644
+--- a/pkg/services/sqlstore/migrations/user_mig.go
++++ b/pkg/services/sqlstore/migrations/user_mig.go
+@@ -222,11 +222,11 @@ func (m *AddMissingUserSaltAndRandsMigration) Exec(sess *xorm.Session, mg *Migra
+ 	}
+ 
+ 	for _, user := range users {
+-		salt, err := util.GetRandomString(10)
++		salt, err := util.GetRandomString(16)
+ 		if err != nil {
+ 			return err
+ 		}
+-		rands, err := util.GetRandomString(10)
++		rands, err := util.GetRandomString(16)
+ 		if err != nil {
+ 			return err
+ 		}
+diff --git a/pkg/services/sqlstore/user.go b/pkg/services/sqlstore/user.go
+index a76261c465..9fe36b43fa 100644
+--- a/pkg/services/sqlstore/user.go
++++ b/pkg/services/sqlstore/user.go
+@@ -73,12 +73,12 @@ func (ss *SQLStore) createUser(ctx context.Context, sess *DBSession, args user.C
+ 		LastSeenAt: time.Now().AddDate(-10, 0, 0),
+ 	}
+ 
+-	salt, err := util.GetRandomString(10)
++	salt, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return usr, err
+ 	}
+ 	usr.Salt = salt
+-	rands, err := util.GetRandomString(10)
++	rands, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return usr, err
+ 	}
+diff --git a/pkg/services/user/userimpl/legacy_user.go b/pkg/services/user/userimpl/legacy_user.go
+index caa16b3796..bbc0b3d55f 100644
+--- a/pkg/services/user/userimpl/legacy_user.go
++++ b/pkg/services/user/userimpl/legacy_user.go
+@@ -152,12 +152,12 @@ func (s *LegacyService) Create(ctx context.Context, cmd *user.CreateUserCommand)
+ 		IsProvisioned:    cmd.IsProvisioned,
+ 	}
+ 
+-	salt, err := util.GetRandomString(10)
++	salt, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 	usr.Salt = salt
+-	rands, err := util.GetRandomString(10)
++	rands, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -464,12 +464,12 @@ func (s *LegacyService) CreateServiceAccount(ctx context.Context, cmd *user.Crea
+ 		IsServiceAccount: true,
+ 	}
+ 
+-	salt, err := util.GetRandomString(10)
++	salt, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 	usr.Salt = salt
+-	rands, err := util.GetRandomString(10)
++	rands, err := util.GetRandomString(16)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/pkg/storage/unified/resource/cdk_blob.go b/pkg/storage/unified/resource/cdk_blob.go
+index 57c21ec2c3..19c82f0a29 100644
+--- a/pkg/storage/unified/resource/cdk_blob.go
++++ b/pkg/storage/unified/resource/cdk_blob.go
+@@ -3,7 +3,7 @@ package resource
+ import (
+ 	"bytes"
+ 	"context"
+-	"crypto/md5"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"fmt"
+ 	"mime"
+@@ -156,9 +156,9 @@ func (s *cdkBlobSupport) PutResourceBlob(ctx context.Context, req *resourcepb.Pu
+ 	}
+ 	rsp.Size = attrs.Size
+ 
+-	// Set the MD5 hash if missing
++	// Set the hash if missing
+ 	if len(attrs.MD5) == 0 {
+-		h := md5.New()
++		h := sha256.New()
+ 		_, _ = h.Write(req.Value)
+ 		attrs.MD5 = h.Sum(nil)
+ 	}
+diff --git a/pkg/storage/unified/sql/backend_blob.go b/pkg/storage/unified/sql/backend_blob.go
+index 92b6e99715..e7d9e0dff7 100644
+--- a/pkg/storage/unified/sql/backend_blob.go
++++ b/pkg/storage/unified/sql/backend_blob.go
+@@ -2,7 +2,7 @@ package sql
+ 
+ import (
+ 	"context"
+-	"crypto/md5"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"fmt"
+ 	"net/http"
+@@ -38,7 +38,7 @@ func (b *backend) PutResourceBlob(ctx context.Context, req *resourcepb.PutBlobRe
+ 		}, nil
+ 	}
+ 
+-	hasher := md5.New() // same as s3
++	hasher := sha256.New()
+ 	_, err := hasher.Write(req.Value)
+ 	if err != nil {
+ 		return nil, err
+diff --git a/pkg/util/encoding.go b/pkg/util/encoding.go
+index 584b48884b..f6b40dbfdb 100644
+--- a/pkg/util/encoding.go
++++ b/pkg/util/encoding.go
+@@ -49,8 +49,16 @@ func GetRandomString(n int, alphabets ...byte) (string, error) {
+ }
+ 
+ // EncodePassword encodes a password using PBKDF2.
++// FIPS 140 requires PBKDF2 salts to be at least 128 bits (16 bytes). If the
++// caller-supplied salt is shorter, we derive a 32-byte salt from it via
++// SHA-256 so that FIPS-only mode does not panic.
+ func EncodePassword(password string, salt string) (string, error) {
+-	newPasswd, err := pbkdf2.Key(sha256.New, password, []byte(salt), 10000, 50)
++	saltBytes := []byte(salt)
++	if len(saltBytes) < 16 {
++		h := sha256.Sum256(saltBytes)
++		saltBytes = h[:]
++	}
++	newPasswd, err := pbkdf2.Key(sha256.New, password, saltBytes, 10000, 50)
+ 	if err != nil {
+ 		return "", err
+ 	}
+diff --git a/pkg/util/encryption.go b/pkg/util/encryption.go
+index e69a879734..22866c17e7 100644
+--- a/pkg/util/encryption.go
++++ b/pkg/util/encryption.go
+@@ -11,6 +11,8 @@ import (
+ 	"errors"
+ 	"fmt"
+ 	"io"
++	"os"
++	"strings"
+ )
+ 
+ const (
+@@ -90,7 +92,21 @@ func decryptGCM(block cipher.Block, payload []byte) ([]byte, error) {
+ 	return gcm.Open(nil, nonce, ciphertext, nil)
+ }
+ 
++// isFIPSOnly reports whether the process is running with GODEBUG=fips140=only.
++func isFIPSOnly() bool {
++	for _, kv := range strings.Split(os.Getenv("GODEBUG"), ",") {
++		if kv == "fips140=only" {
++			return true
++		}
++	}
++	return false
++}
++
+ func decryptCFB(block cipher.Block, payload []byte) ([]byte, error) {
++	if isFIPSOnly() {
++		return nil, errors.New("AES-CFB decryption is not allowed in FIPS-only mode; re-encrypt data using AES-GCM")
++	}
++
+ 	// The IV needs to be unique, but not secure. Therefore it's common to
+ 	// include it at the beginning of the ciphertext.
+ 	if len(payload) < aes.BlockSize {
+@@ -127,20 +143,18 @@ func Encrypt(payload []byte, secret string) ([]byte, error) {
+ 		return nil, err
+ 	}
+ 
+-	// The IV needs to be unique, but not secure. Therefore it's common to
+-	// include it at the beginning of the ciphertext.
+-	ciphertext := make([]byte, saltLength+aes.BlockSize+len(payload))
+-	copy(ciphertext[:saltLength], salt)
+-	iv := ciphertext[saltLength : saltLength+aes.BlockSize]
+-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
++	gcm, err := cipher.NewGCM(block)
++	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	//nolint:staticcheck
+-	stream := cipher.NewCFBEncrypter(block, iv)
+-	stream.XORKeyStream(ciphertext[saltLength+aes.BlockSize:], payload)
++	nonce := make([]byte, saltLength+gcm.NonceSize())
++	copy(nonce[:saltLength], salt)
++	if _, err := io.ReadFull(rand.Reader, nonce[saltLength:]); err != nil {
++		return nil, err
++	}
+ 
+-	return ciphertext, nil
++	return gcm.Seal(nonce, nonce[saltLength:], payload, nil), nil
+ }
+ 
+ // Key needs to be 32bytes
+diff --git a/pkg/util/md5.go b/pkg/util/md5.go
+index 99641ca398..f27ac46fd8 100644
+--- a/pkg/util/md5.go
++++ b/pkg/util/md5.go
+@@ -1,25 +1,23 @@
+ package util
+ 
+ import (
+-	"crypto/md5"
++	"crypto/sha256"
+ 	"encoding/hex"
+ 	"io"
+ 	"strings"
+ )
+ 
+-// Md5Sum calculates the md5sum of a stream
++// Md5Sum returns a hex-encoded SHA-256 digest of the stream (MD5 is not
++// allowed in FIPS-only mode; SHA-256 is a safe non-cryptographic replacement).
+ func Md5Sum(reader io.Reader) (string, error) {
+-	var returnMD5String string
+-	hash := md5.New()
++	hash := sha256.New()
+ 	if _, err := io.Copy(hash, reader); err != nil {
+-		return returnMD5String, err
++		return "", err
+ 	}
+-	hashInBytes := hash.Sum(nil)[:16]
+-	returnMD5String = hex.EncodeToString(hashInBytes)
+-	return returnMD5String, nil
++	return hex.EncodeToString(hash.Sum(nil)), nil
+ }
+ 
+-// Md5SumString calculates the md5sum of a string
++// Md5SumString returns a hex-encoded SHA-256 digest of the input string.
+ func Md5SumString(input string) (string, error) {
+ 	buffer := strings.NewReader(input)
+ 	return Md5Sum(buffer)
