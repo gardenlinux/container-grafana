@@ -180,6 +180,7 @@ docker buildx build \
     --platform "linux/${ARCH}" \
     --build-arg ARCH="${ARCH}" \
     --build-arg GO_IMAGE="${GO_IMAGE}" \
+    --build-arg JS_PLATFORM="$(uname -m | sed 's/x86_64/linux\/amd64/;s/aarch64/linux\/arm64/')" \
     --build-arg UPSTREAM_GIT_SHA="${UPSTREAM_GIT_SHA}" \
     --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" \
     --build-arg GRAFANA_PLUGINS="${GRAFANA_PLUGINS}" \
