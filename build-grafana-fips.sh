@@ -10,7 +10,7 @@ IMAGE_NAME="${IMAGE_NAME:-gl-fips-grafana}"
 ARCH="${ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 VERSION="${VERSION:-13.2.4}"
 UPSTREAM_GIT_SHA="${UPSTREAM_GIT_SHA:-af4a33e3786594ad72f72d97e6744010330c2977}"
-GO_IMAGE="${GO_IMAGE:-golang:1.26.6-alpine}"
+GO_IMAGE="${GO_IMAGE:-golang:1.26.9-alpine}"
 # Space-separated list of additional plugins to bake into the image at build time,
 # e.g. GRAFANA_PLUGINS="grafana-clock-panel grafana-piechart-panel"
 GRAFANA_PLUGINS="${GRAFANA_PLUGINS:-}"
