@@ -1,6 +1,7 @@
 name: Build FIPS Grafana image
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       version:

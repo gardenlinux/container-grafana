@@ -89,7 +89,15 @@ Fix 3: SHA-1 panic at plugin load time on container startup
   Note: All source changes to Grafana are made exclusively via unified diff patch files
   applied with `git apply`. No direct edits to working tree files are made by the build script.
 
-Operator-supplied additional plugins:
+Fix 4: arm64 build crash — js-builder stage running under QEMU
+- Root cause: The upstream Dockerfile's js-builder stage uses --platform=${JS_PLATFORM},
+  which defaults to the target platform (linux/arm64) when JS_PLATFORM is not set.
+  On a native arm64 runner, BuildKit still emulates the amd64 esbuild binary (a Go binary
+  inside the Alpine js-builder image) via QEMU, triggering the same lfstack.push Go runtime
+  crash that occurs with full QEMU emulation.
+- Fix: Pass --build-arg JS_PLATFORM=$(uname -m | sed ...) to docker buildx build so
+  js-builder always runs on the build host's native architecture, matching the existing
+  --platform=$BUILDPLATFORM treatment of go-builder.
 - Added GRAFANA_PLUGINS build argument (space-separated plugin IDs) so operators can bake
   additional approved plugins into the image at build time, e.g.:
     docker build --build-arg GRAFANA_PLUGINS="grafana-clock-panel" ...
