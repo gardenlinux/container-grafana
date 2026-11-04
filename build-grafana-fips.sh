@@ -6,6 +6,7 @@ set -euo pipefail
 REPO_URL="${REPO_URL:-https://github.com/grafana/grafana}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/gardenlinux/gardenlinux/fips:1877.22}"
 WORKDIR="${WORKDIR:-.build/grafana-fips-build}"
+WORKDIR="$(mkdir -p "${WORKDIR}" && cd "${WORKDIR}" && pwd)"
 IMAGE_NAME="${IMAGE_NAME:-gl-fips-grafana}"
 ARCH="${ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 VERSION="${VERSION:-13.2.4}"
@@ -64,7 +65,6 @@ done
 # 3. Appending a final-gardenlinux stage that copies assets from the multi-stage
 #    build and runs Grafana on a FIPS-enabled Debian (gardenlinux) base.
 
-mkdir -p "${WORKDIR}"
 cp Dockerfile "${WORKDIR}/Dockerfile.fips"
 
 # Add --platform=$BUILDPLATFORM to the Go builder FROM for cross-compilation
@@ -193,9 +193,6 @@ docker buildx build \
 # --- report ------------------------------------------------------------------
 
 echo "Built: ${IMAGE_NAME}:${VERSION}-${ARCH}"
-
-# Return to repo root — the script cd'd into CLONE_DIR earlier and WORKDIR is relative.
-cd - >/dev/null
 
 # --- SBOM --------------------------------------------------------------------
 # Syft version is pinned; update SYFT_VERSION to pick up a newer release.
