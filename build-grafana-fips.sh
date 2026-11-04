@@ -194,6 +194,9 @@ docker buildx build \
 
 echo "Built: ${IMAGE_NAME}:${VERSION}-${ARCH}"
 
+# Return to repo root — the script cd'd into CLONE_DIR earlier and WORKDIR is relative.
+cd - >/dev/null
+
 # --- SBOM --------------------------------------------------------------------
 # Syft version is pinned; update SYFT_VERSION to pick up a newer release.
 SYFT_VERSION="${SYFT_VERSION:-1.56.0}"
