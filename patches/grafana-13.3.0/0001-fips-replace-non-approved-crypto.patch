@@ -1,5 +1,5 @@
 diff --git a/apps/provisioning/pkg/repository/local/local.go b/apps/provisioning/pkg/repository/local/local.go
-index 83bb9c24d5..ec09fc4c4e 100644
+index 4d8e2624..7ec2235e 100644
 --- a/apps/provisioning/pkg/repository/local/local.go
 +++ b/apps/provisioning/pkg/repository/local/local.go
 @@ -4,9 +4,7 @@ import (
@@ -13,7 +13,7 @@ index 83bb9c24d5..ec09fc4c4e 100644
  	"encoding/hex"
  	"errors"
  	"fmt"
-@@ -280,7 +278,7 @@ func (r *localRepository) calculateFileHash(path string) (string, int64, error)
+@@ -302,7 +300,7 @@ func (r *localRepository) calculateFileHash(path string) (string, int64, error)
  	}
  
  	// TODO: Define what hashing algorithm we want to use for the entire repository. Maybe a config option?
@@ -23,7 +23,7 @@ index 83bb9c24d5..ec09fc4c4e 100644
  	size, err := io.Copy(hasher, file)
  	if err != nil {
 diff --git a/pkg/infra/filestorage/db_filestorage.go b/pkg/infra/filestorage/db_filestorage.go
-index 6b95255870..21672b73dc 100644
+index 6dfc28a0..287952b2 100644
 --- a/pkg/infra/filestorage/db_filestorage.go
 +++ b/pkg/infra/filestorage/db_filestorage.go
 @@ -2,14 +2,10 @@ package filestorage
@@ -61,7 +61,7 @@ index 6b95255870..21672b73dc 100644
  }
  
 diff --git a/pkg/infra/slugify/slugify.go b/pkg/infra/slugify/slugify.go
-index 73a42e2b1e..941863eed0 100644
+index 73a42e2b..941863ee 100644
 --- a/pkg/infra/slugify/slugify.go
 +++ b/pkg/infra/slugify/slugify.go
 @@ -32,15 +32,11 @@ package slugify
@@ -91,7 +91,7 @@ index 73a42e2b1e..941863eed0 100644
  		s = hex.EncodeToString(h.Sum(nil))[:7]
  	}
 diff --git a/pkg/plugins/manager/signature/manifest.go b/pkg/plugins/manager/signature/manifest.go
-index 6d790c7987..d5c8aded12 100644
+index 86f698bd..77f52a51 100644
 --- a/pkg/plugins/manager/signature/manifest.go
 +++ b/pkg/plugins/manager/signature/manifest.go
 @@ -352,7 +352,24 @@ func (s *Signature) validateManifest(ctx context.Context, m PluginManifest, bloc
@@ -120,10 +120,10 @@ index 6d790c7987..d5c8aded12 100644
  	if err != nil {
  		return err
 diff --git a/pkg/registry/apis/iam/legacy/user.go b/pkg/registry/apis/iam/legacy/user.go
-index 1611b3dfb4..a2762ea9ed 100644
+index f9550979..b7f62e15 100644
 --- a/pkg/registry/apis/iam/legacy/user.go
 +++ b/pkg/registry/apis/iam/legacy/user.go
-@@ -488,11 +488,11 @@ func newCreateOrgUser(sql *legacysql.LegacyDatabaseHelper, cmd *CreateOrgUserCom
+@@ -489,11 +489,11 @@ func newCreateOrgUser(sql *legacysql.LegacyDatabaseHelper, cmd *CreateOrgUserCom
  func (s *legacySQLStore) CreateUser(ctx context.Context, ns claims.NamespaceInfo, cmd CreateUserCommand) (*CreateUserResult, error) {
  	cmd.OrgID = ns.OrgID
  
@@ -138,7 +138,7 @@ index 1611b3dfb4..a2762ea9ed 100644
  		return nil, err
  	}
 diff --git a/pkg/services/accesscontrol/roles.go b/pkg/services/accesscontrol/roles.go
-index bcd33e1a4b..3690eafcb1 100644
+index bcd33e1a..3690eafc 100644
 --- a/pkg/services/accesscontrol/roles.go
 +++ b/pkg/services/accesscontrol/roles.go
 @@ -1,8 +1,7 @@
@@ -163,7 +163,7 @@ index bcd33e1a4b..3690eafcb1 100644
  	return fmt.Sprintf("%s%s", prefix, base64.RawURLEncoding.EncodeToString(hasher.Sum(nil)))
 diff --git a/pkg/services/encryption/provider/cipher_aescfb.go b/pkg/services/encryption/provider/cipher_aescfb.go
 deleted file mode 100644
-index 272944074a..0000000000
+index b0988156..00000000
 --- a/pkg/services/encryption/provider/cipher_aescfb.go
 +++ /dev/null
 @@ -1,46 +0,0 @@
@@ -208,14 +208,14 @@ index 272944074a..0000000000
 -	}
 -
 -	//nolint:staticcheck
--	stream := cipher.NewCFBEncrypter(block, iv)
+-	stream := cipher.NewCFBEncrypter(block, iv) //nolint:gosec // G407: legacy code, new code uses AEAD.
 -	stream.XORKeyStream(ciphertext[encryption.SaltLength+aes.BlockSize:], payload)
 -
 -	return ciphertext, nil
 -}
 diff --git a/pkg/services/encryption/provider/cipher_aesgcm.go b/pkg/services/encryption/provider/cipher_aesgcm.go
 new file mode 100644
-index 0000000000..179d6d5823
+index 00000000..179d6d58
 --- /dev/null
 +++ b/pkg/services/encryption/provider/cipher_aesgcm.go
 @@ -0,0 +1,44 @@
@@ -264,7 +264,7 @@ index 0000000000..179d6d5823
 +	return gcm.Seal(nonce, nonce[encryption.SaltLength:], payload, nil), nil
 +}
 diff --git a/pkg/services/encryption/provider/decipher_aes.go b/pkg/services/encryption/provider/decipher_aes.go
-index bfbf191170..d56eef1f0b 100644
+index bfbf1911..d56eef1f 100644
 --- a/pkg/services/encryption/provider/decipher_aes.go
 +++ b/pkg/services/encryption/provider/decipher_aes.go
 @@ -5,6 +5,8 @@ import (
@@ -299,7 +299,7 @@ index bfbf191170..d56eef1f0b 100644
  	// include it at the beginning of the ciphertext.
  	if len(payload) < aes.BlockSize {
 diff --git a/pkg/services/encryption/provider/provider.go b/pkg/services/encryption/provider/provider.go
-index 355419c3f1..60694535dd 100644
+index 355419c3..60694535 100644
 --- a/pkg/services/encryption/provider/provider.go
 +++ b/pkg/services/encryption/provider/provider.go
 @@ -12,7 +12,7 @@ func ProvideEncryptionProvider() Provider {
@@ -312,7 +312,7 @@ index 355419c3f1..60694535dd 100644
  }
  
 diff --git a/pkg/services/encryption/service/service.go b/pkg/services/encryption/service/service.go
-index 51bf98c5fd..f22a874638 100644
+index 51bf98c5..f22a8746 100644
 --- a/pkg/services/encryption/service/service.go
 +++ b/pkg/services/encryption/service/service.go
 @@ -21,7 +21,7 @@ const (
@@ -325,7 +325,7 @@ index 51bf98c5fd..f22a874638 100644
  
  // Service must not be used for encryption.
 diff --git a/pkg/services/ngalert/models/accesscontrol.go b/pkg/services/ngalert/models/accesscontrol.go
-index 7add7f658c..7d5d8ef0e4 100644
+index 352c1e91..3af91b3b 100644
 --- a/pkg/services/ngalert/models/accesscontrol.go
 +++ b/pkg/services/ngalert/models/accesscontrol.go
 @@ -1,8 +1,7 @@
@@ -338,7 +338,7 @@ index 7add7f658c..7d5d8ef0e4 100644
  	"encoding/hex"
  
  	"github.com/grafana/grafana/pkg/services/accesscontrol"
-@@ -57,7 +56,7 @@ func (p ReceiverScopeProvider) GetResourceIDFromUID(uid string) string {
+@@ -65,7 +64,7 @@ func (p ReceiverScopeProvider) GetResourceIDFromUID(uid string) string {
  		return uid
  	}
  	// #nosec G505 Used only for shortening the uid, not for security purposes.
@@ -348,7 +348,7 @@ index 7add7f658c..7d5d8ef0e4 100644
  	return hex.EncodeToString(h.Sum(nil))
  }
 diff --git a/pkg/services/ngalert/models/instance_labels.go b/pkg/services/ngalert/models/instance_labels.go
-index 1904515cbd..f5cc6e4e03 100644
+index 1904515c..f5cc6e4e 100644
 --- a/pkg/services/ngalert/models/instance_labels.go
 +++ b/pkg/services/ngalert/models/instance_labels.go
 @@ -1,8 +1,7 @@
@@ -371,7 +371,7 @@ index 1904515cbd..f5cc6e4e03 100644
  		return "", "", err
  	}
 diff --git a/pkg/services/ngalert/sender/notifier.go b/pkg/services/ngalert/sender/notifier.go
-index 9fcdfa6b63..e22efbf128 100644
+index ab01e365..b3c21ef0 100644
 --- a/pkg/services/ngalert/sender/notifier.go
 +++ b/pkg/services/ngalert/sender/notifier.go
 @@ -20,7 +20,7 @@ package sender
@@ -393,7 +393,7 @@ index 9fcdfa6b63..e22efbf128 100644
  }
  
 diff --git a/pkg/services/ngalert/sender/sender.go b/pkg/services/ngalert/sender/sender.go
-index 68b1ad2489..a3ff2f5998 100644
+index 23663e9f..0e4521e9 100644
 --- a/pkg/services/ngalert/sender/sender.go
 +++ b/pkg/services/ngalert/sender/sender.go
 @@ -2,7 +2,7 @@ package sender
@@ -405,7 +405,7 @@ index 68b1ad2489..a3ff2f5998 100644
  	"errors"
  	"fmt"
  	"net/http"
-@@ -456,7 +456,7 @@ func (s *ExternalAlertmanager) sanitizeLabelSet(lbls models.LabelSet) labels.Lab
+@@ -444,7 +444,7 @@ func (s *ExternalAlertmanager) sanitizeLabelSet(lbls models.LabelSet) labels.Lab
  
  		// There can be label name collisions after we sanitize. We check for this and attempt to make the name unique again using a short hash of the original name.
  		if _, ok := set[sanitizedLabelName]; ok {
@@ -415,7 +415,7 @@ index 68b1ad2489..a3ff2f5998 100644
  		}
  
 diff --git a/pkg/services/ngalert/store/alertmanager.go b/pkg/services/ngalert/store/alertmanager.go
-index b21f952fb4..cff089b79d 100644
+index d67e8970..db621090 100644
 --- a/pkg/services/ngalert/store/alertmanager.go
 +++ b/pkg/services/ngalert/store/alertmanager.go
 @@ -2,7 +2,7 @@ package store
@@ -427,7 +427,7 @@ index b21f952fb4..cff089b79d 100644
  	"fmt"
  	"time"
  
-@@ -71,7 +71,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
+@@ -68,7 +68,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
  	return st.SQLStore.WithTransactionalDbSession(ctx, func(sess *db.Session) error {
  		config := models.AlertConfiguration{
  			AlertmanagerConfiguration: cmd.AlertmanagerConfiguration,
@@ -436,7 +436,7 @@ index b21f952fb4..cff089b79d 100644
  			ConfigurationVersion:      cmd.ConfigurationVersion,
  			Default:                   cmd.Default,
  			OrgID:                     cmd.OrgID,
-@@ -110,7 +110,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
+@@ -107,7 +107,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
  // UpdateAlertmanagerConfiguration replaces an alertmanager configuration with optimistic locking. It assumes that an existing revision of the configuration exists in the store, and will return an error otherwise.
  func (st *DBstore) UpdateAlertmanagerConfiguration(ctx context.Context, cmd *models.SaveAlertmanagerConfigurationCmd) error {
  	return st.SQLStore.WithTransactionalDbSession(ctx, func(sess *db.Session) error {
@@ -446,7 +446,7 @@ index b21f952fb4..cff089b79d 100644
  		if newConfigHash == cmd.FetchedConfigurationHash {
  			// double check that the configuration with this hash is in the db
 diff --git a/pkg/services/sqlstore/migrations/user_mig.go b/pkg/services/sqlstore/migrations/user_mig.go
-index 46ef2442e7..473b6914c0 100644
+index 46ef2442..473b6914 100644
 --- a/pkg/services/sqlstore/migrations/user_mig.go
 +++ b/pkg/services/sqlstore/migrations/user_mig.go
 @@ -222,11 +222,11 @@ func (m *AddMissingUserSaltAndRandsMigration) Exec(sess *xorm.Session, mg *Migra
@@ -464,7 +464,7 @@ index 46ef2442e7..473b6914c0 100644
  			return err
  		}
 diff --git a/pkg/services/sqlstore/user.go b/pkg/services/sqlstore/user.go
-index a76261c465..9fe36b43fa 100644
+index a76261c4..9fe36b43 100644
 --- a/pkg/services/sqlstore/user.go
 +++ b/pkg/services/sqlstore/user.go
 @@ -73,12 +73,12 @@ func (ss *SQLStore) createUser(ctx context.Context, sess *DBSession, args user.C
@@ -483,10 +483,10 @@ index a76261c465..9fe36b43fa 100644
  		return usr, err
  	}
 diff --git a/pkg/services/user/userimpl/legacy_user.go b/pkg/services/user/userimpl/legacy_user.go
-index caa16b3796..bbc0b3d55f 100644
+index 56c829bb..fd46bc57 100644
 --- a/pkg/services/user/userimpl/legacy_user.go
 +++ b/pkg/services/user/userimpl/legacy_user.go
-@@ -152,12 +152,12 @@ func (s *LegacyService) Create(ctx context.Context, cmd *user.CreateUserCommand)
+@@ -161,12 +161,12 @@ func (s *LegacyService) Create(ctx context.Context, cmd *user.CreateUserCommand)
  		IsProvisioned:    cmd.IsProvisioned,
  	}
  
@@ -501,7 +501,7 @@ index caa16b3796..bbc0b3d55f 100644
  	if err != nil {
  		return nil, err
  	}
-@@ -464,12 +464,12 @@ func (s *LegacyService) CreateServiceAccount(ctx context.Context, cmd *user.Crea
+@@ -524,12 +524,12 @@ func (s *LegacyService) CreateServiceAccount(ctx context.Context, cmd *user.Crea
  		IsServiceAccount: true,
  	}
  
@@ -517,7 +517,7 @@ index caa16b3796..bbc0b3d55f 100644
  		return nil, err
  	}
 diff --git a/pkg/storage/unified/resource/cdk_blob.go b/pkg/storage/unified/resource/cdk_blob.go
-index 57c21ec2c3..19c82f0a29 100644
+index adfc99ed..de185f3c 100644
 --- a/pkg/storage/unified/resource/cdk_blob.go
 +++ b/pkg/storage/unified/resource/cdk_blob.go
 @@ -3,7 +3,7 @@ package resource
@@ -529,7 +529,7 @@ index 57c21ec2c3..19c82f0a29 100644
  	"encoding/hex"
  	"fmt"
  	"mime"
-@@ -156,9 +156,9 @@ func (s *cdkBlobSupport) PutResourceBlob(ctx context.Context, req *resourcepb.Pu
+@@ -155,9 +155,9 @@ func (s *cdkBlobSupport) PutResourceBlob(ctx context.Context, req *resourcepb.Pu
  	}
  	rsp.Size = attrs.Size
  
@@ -542,7 +542,7 @@ index 57c21ec2c3..19c82f0a29 100644
  		attrs.MD5 = h.Sum(nil)
  	}
 diff --git a/pkg/storage/unified/sql/backend_blob.go b/pkg/storage/unified/sql/backend_blob.go
-index 92b6e99715..e7d9e0dff7 100644
+index afa8c798..d1c04a79 100644
 --- a/pkg/storage/unified/sql/backend_blob.go
 +++ b/pkg/storage/unified/sql/backend_blob.go
 @@ -2,7 +2,7 @@ package sql
@@ -554,7 +554,7 @@ index 92b6e99715..e7d9e0dff7 100644
  	"encoding/hex"
  	"fmt"
  	"net/http"
-@@ -38,7 +38,7 @@ func (b *backend) PutResourceBlob(ctx context.Context, req *resourcepb.PutBlobRe
+@@ -36,7 +36,7 @@ func (b *backend) PutResourceBlob(ctx context.Context, req *resourcepb.PutBlobRe
  		}, nil
  	}
  
@@ -564,7 +564,7 @@ index 92b6e99715..e7d9e0dff7 100644
  	if err != nil {
  		return nil, err
 diff --git a/pkg/util/encoding.go b/pkg/util/encoding.go
-index 584b48884b..f6b40dbfdb 100644
+index 584b4888..f6b40dbf 100644
 --- a/pkg/util/encoding.go
 +++ b/pkg/util/encoding.go
 @@ -49,8 +49,16 @@ func GetRandomString(n int, alphabets ...byte) (string, error) {
@@ -586,7 +586,7 @@ index 584b48884b..f6b40dbfdb 100644
  		return "", err
  	}
 diff --git a/pkg/util/encryption.go b/pkg/util/encryption.go
-index e69a879734..22866c17e7 100644
+index ef036f1f..22866c17 100644
 --- a/pkg/util/encryption.go
 +++ b/pkg/util/encryption.go
 @@ -11,6 +11,8 @@ import (
@@ -636,7 +636,7 @@ index e69a879734..22866c17e7 100644
  	}
  
 -	//nolint:staticcheck
--	stream := cipher.NewCFBEncrypter(block, iv)
+-	stream := cipher.NewCFBEncrypter(block, iv) //nolint:gosec // G407: legacy code, deprecated.
 -	stream.XORKeyStream(ciphertext[saltLength+aes.BlockSize:], payload)
 +	nonce := make([]byte, saltLength+gcm.NonceSize())
 +	copy(nonce[:saltLength], salt)
@@ -650,7 +650,7 @@ index e69a879734..22866c17e7 100644
  
  // Key needs to be 32bytes
 diff --git a/pkg/util/md5.go b/pkg/util/md5.go
-index 99641ca398..f27ac46fd8 100644
+index 99641ca3..f27ac46f 100644
 --- a/pkg/util/md5.go
 +++ b/pkg/util/md5.go
 @@ -1,25 +1,23 @@
