@@ -20,6 +20,20 @@ GRAFANA_PLUGINS="${GRAFANA_PLUGINS:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCHES_DIR="${SCRIPT_DIR}/patches/grafana-${VERSION}"
 
+# If no patch directory exists for this exact version, copy from the most
+# recently tagged prior version as a best-effort starting point.
+if [ ! -d "${PATCHES_DIR}" ]; then
+    PREV_PATCHES=$(find "${SCRIPT_DIR}/patches" -maxdepth 1 -type d -name 'grafana-*' \
+        | sort -V | tail -1)
+    if [ -n "${PREV_PATCHES}" ]; then
+        echo "No patches for ${VERSION}; copying from $(basename "${PREV_PATCHES}")"
+        cp -r "${PREV_PATCHES}" "${PATCHES_DIR}"
+    else
+        echo "No prior patches found; creating empty patches directory"
+        mkdir -p "${PATCHES_DIR}"
+    fi
+fi
+
 # --- prerequisites -----------------------------------------------------------
 
 check_tool() { command -v "$1" &>/dev/null || { echo "error: $1 not found" >&2; exit 1; }; }
@@ -54,6 +68,7 @@ git clean -f
 # equivalents (SHA-256, AES-GCM). Patches live in patches/grafana-<VERSION>/.
 
 for patch in "${PATCHES_DIR}"/*.patch; do
+    [ -f "$patch" ] || continue
     echo "Applying patch: $(basename "$patch")"
     git apply "$patch"
 done
