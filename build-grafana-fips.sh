@@ -9,7 +9,7 @@ WORKDIR="${WORKDIR:-.build/grafana-fips-build}"
 WORKDIR="$(mkdir -p "${WORKDIR}" && cd "${WORKDIR}" && pwd)"
 IMAGE_NAME="${IMAGE_NAME:-gl-fips-grafana}"
 ARCH="${ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
-VERSION="${VERSION:-13.2.4}"
+VERSION="${VERSION:-13.3.1}"
 UPSTREAM_GIT_SHA="${UPSTREAM_GIT_SHA:-af4a33e3786594ad72f72d97e6744010330c2977}"
 GO_IMAGE="${GO_IMAGE:-golang:1.27-alpine}"
 # Space-separated list of additional plugins to bake into the image at build time,
@@ -211,7 +211,7 @@ echo "Built: ${IMAGE_NAME}:${VERSION}-${ARCH}"
 
 # --- SBOM --------------------------------------------------------------------
 # Syft version is pinned; update SYFT_VERSION to pick up a newer release.
-SYFT_VERSION="${SYFT_VERSION:-1.56.0}"
+SYFT_VERSION="${SYFT_VERSION:-13.3.1}"
 SYFT_BIN="${WORKDIR}/syft"
 
 install_syft() {
