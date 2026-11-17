@@ -2,7 +2,7 @@ name: Check upstream Grafana release
 
 on:
   schedule:
-    - cron: '17 6 * * *'
+    - cron: '30 2 * * *'
   workflow_dispatch:
     inputs:
       upstream_repo:
