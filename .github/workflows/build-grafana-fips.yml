@@ -58,8 +58,10 @@ jobs:
           VERSION="${VERSION:-$(grep -m1 'VERSION:-' build-grafana-fips.sh | grep -oP '(?<=VERSION:-)[^}]+')}"
           bash build-grafana-fips.sh
           docker push ghcr.io/${{ github.repository_owner }}/gl-fips-grafana:${VERSION}-amd64
+          sleep 3
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' \
             ghcr.io/${{ github.repository_owner }}/gl-fips-grafana:${VERSION}-amd64 | cut -d@ -f2)
+          [ -n "${DIGEST}" ] || { echo "Failed to retrieve image digest"; exit 1; }
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Upload SBOM artifact
@@ -107,8 +109,10 @@ jobs:
           VERSION="${VERSION:-$(grep -m1 'VERSION:-' build-grafana-fips.sh | grep -oP '(?<=VERSION:-)[^}]+')}"
           bash build-grafana-fips.sh
           docker push ghcr.io/${{ github.repository_owner }}/gl-fips-grafana:${VERSION}-arm64
+          sleep 3
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' \
             ghcr.io/${{ github.repository_owner }}/gl-fips-grafana:${VERSION}-arm64 | cut -d@ -f2)
+          [ -n "${DIGEST}" ] || { echo "Failed to retrieve image digest"; exit 1; }
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Upload SBOM artifact
